@@ -3,6 +3,8 @@
 A fine-tuned DistilBERT classifier that labels Reddit r/stocks posts into four discourse quality categories, benchmarked against a zero-shot Groq LLaMA-3.3 baseline. Final test accuracy: **85.1%** (fine-tuned) vs. **80.9%** (baseline zero-shot).
 
 ---
+![Subreddit Header Image](util/header.png)
+---
 
 ## Community Choice and Reasoning
 
