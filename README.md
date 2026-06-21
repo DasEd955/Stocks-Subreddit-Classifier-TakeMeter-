@@ -208,6 +208,8 @@ The baseline's structural failure is visible in the `Evidence_Based_Analysis` ro
 
 ### Confusion Matrix (Fine-Tuned Model)
 
+![Confusion Matrix](results/confusion_matrix.png)
+
 ```
                           Predicted
                     EBA    IO    NI   LQM
