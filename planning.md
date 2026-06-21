@@ -254,7 +254,15 @@ The value of this project is in demonstrating the framework and validating that 
 
 ---
 
-## 7. AI Tool Plan
+## 7. Spec Reflection
+
+**One way the spec helped:** Defining the four labels and their edge case rules before any annotation began was the single most valuable structural decision in this project. The "stripping test" (remove opinion framing, does the claim still stand independently?) resolved dozens of ambiguous cases that would otherwise have been labeled inconsistently. Without that rule written down before annotation, the Analysis/Opinion boundary would have drifted significantly across 310 examples.
+
+**One way implementation diverged from the spec:** The spec assumed inter-annotator agreement would be feasible to compute. In practice, with a single annotator and a 310-example manual dataset, there was no second labeler to check against. The consequence is that annotation consistency is structural risk that cannot be quantified. Several posts near the Analysis/Opinion boundary were revisited multiple times during annotation, and it is plausible that if the same annotator reviewed the dataset a second time without memory of the first pass, some borderline decisions would differ. The spec should have included at least a 30-example second pass consistency check by the same annotator to estimate this drift.
+
+---
+
+## 9. AI Tool Plan
 
 This project's workflow is annotation heavy and evaluation-driven rather than implementation heavy, so AI tools are used at three specific points where they add the most leverage: stress testing label definitions before any annotation begins, and identifying error patterns after the model is trained. Annotation itself was kept fully manual by deliberate choice.
 
@@ -372,7 +380,7 @@ LLM-identified patterns will be checked against the confusion matrix and the ful
 
 ---
 
-## 8. Stretch Feature: Confidence Calibration
+## 10. Stretch Feature: Confidence Calibration
 
 **Purpose:** A confidence score is only useful if it is *meaningful*, i.e., the model's stated certainty tracks its actual correctness. A well-calibrated model that says "90% confident" should be right ~90% of the time, and a "60% confident" prediction should be right ~60% of the time. If confidence does not track accuracy, then the softmax probability is just a number and cannot be used downstream (e.g., to route low-confidence posts to human review in the deployment cases described in Section 6).
 
@@ -394,7 +402,7 @@ The fine-tuned model's softmax probabilities on the 47-example test set (`ft_pro
 
 ---
 
-## 9. Stretch Feature: Error Pattern Analysis
+## 11. Stretch Feature: Error Pattern Analysis
 
 **Purpose:** Go beyond the existing per-error narrative (Section 7.3 lists the 7 individual misclassifications) and identify a *systematic, programmatically verified* pattern in the errors. A single statement of the form "the model fails specifically when X" that is backed by counting over the actual predictions, not by eyeballing examples.
 
@@ -419,7 +427,7 @@ The fine-tuned model's softmax probabilities on the 47-example test set (`ft_pro
 
 ---
 
-## 10. Stretch Feature: Deployed Interface
+## 12. Stretch Feature: Deployed Interface
 
 **Purpose:** Make the fine-tuned classifier usable by a non-technical person without opening the notebook. A deployed interface closes the loop on the deployment cases in Section 6 (Investment Research Filtering, content triage): an analyst pastes a Reddit post, presses one button, and gets back the discourse-quality label plus the model's confidence. This is the exact human-in-the-loop interaction a production triage tool would expose.
 
