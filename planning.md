@@ -254,6 +254,110 @@ The value of this project is in demonstrating the framework and validating that 
 
 ---
 
+## 7. AI Tool Plan
+
+This project's workflow is annotation-heavy and evaluation-driven rather than implementation-heavy, so AI tools are used at three specific points where they add the most leverage: stress-testing label definitions before any annotation begins, and identifying error patterns after the model is trained. Annotation itself was kept fully manual by deliberate choice.
+
+---
+
+### 7.1 Label Stress-Testing
+
+**Purpose:** Before committing to annotating 200+ examples, use an LLM to generate adversarial boundary posts — posts that sit exactly at the edge between two labels. If the generated posts cannot be cleanly classified using the existing definitions, the definitions need tightening before annotation begins.
+
+**Prompt used (given to Claude):** The four label definitions and edge case rules from Section 2 and 3 were provided verbatim, with the instruction: *"Generate 5–10 posts that sit at the hardest possible boundary between two labels. Do not make them obviously one or the other."*
+
+**Generated boundary posts and their resolved labels:**
+
+*Analysis ↔ Opinion boundary:*
+
+> "Microsoft's cloud segment has been growing faster than AWS for three consecutive quarters, which tells me the enterprise migration cycle still has runway."
+
+→ `Evidence_Based_Analysis`. "Three consecutive quarters" is a specific, verifiable trend; the conclusion is derived from the cited pattern, not asserted independently. The phrase "tells me" is opinion framing over an evidence-based inference — apply the stripping rule: remove "tells me" and the claim still stands.
+
+> "AI spending feels like it's plateauing — the hyperscalers are still growing capex but the marginal returns look like they're compressing."
+
+→ `Interpretive_Opinion`. "Feels like" and "looks like" signal unverified intuition. "Marginal returns compressing" is not cited with data — it is asserted as felt observation. Strip the framing: the residual claim is not independently supportable.
+
+> "Meta's Reality Labs has lost over $40B since 2020. At some point the market is going to stop giving Zuckerberg a pass on this."
+
+→ `Evidence_Based_Analysis`. The $40B figure is specific and verifiable; the second sentence is an opinion rider. The post's primary function is to anchor a claim in evidence. The opinion rider is editorial, not the thesis.
+
+*News ↔ Analysis boundary:*
+
+> "Nvidia just reported another blowout quarter. $30B revenue, 122% YoY growth. This changes the competitive calculus for AMD — their data center roadmap looks underpowered by comparison."
+
+→ `Evidence_Based_Analysis`. The first two sentences are news; the third is the dominant purpose of the post and constitutes analysis (draws an implication about a competitor). The analytical framing is the thesis; the news figures are the supporting premise.
+
+> "CPI came in at 3.1% vs. 3.3% expected. Markets rallied. 10Y yields fell 12 bps."
+
+→ `News_Information`. Pure fact reporting across three data points, no interpretive layer added. No implication is drawn.
+
+*Opinion ↔ Low Quality boundary:*
+
+> "I genuinely don't understand why anyone is still long $TSLA here. The fundamentals don't support a $600B valuation and Musk is a liability."
+
+→ `Interpretive_Opinion`. The first clause is strong opinion; the second ("fundamentals don't support") gestures at evidence without citing it, which is not enough to cross into Analysis. The post is direct but not manipulative — no certainty-as-fact, no inflammatory call to action beyond implicit disagreement. Stays Opinion.
+
+> "TSLA puts are literally free money right now. This thing is about to collapse. Load up or stay poor."
+
+→ `Low_Quality_Misleading`. "Literally free money" is unsupported certainty presented as fact. "Stay poor" is inflammatory rhetoric designed to pressure a financial action. Classic pump/dump framing applied inversely (a short-side pump). Crosses the Low Quality threshold on criteria (a) and (b).
+
+> "Anyone who bought ARKK in 2021 deserves what happened to them. Cathie Wood is a fraud and I have zero sympathy."
+
+→ `Interpretive_Opinion`. The "fraud" characterization is strong and potentially unfounded, but the post is retrospective commentary rather than a call to financial action. It does not contain a market prediction or attempt to move someone's trading behavior. It is opinionated, not misleading in the technical sense. Stays Opinion — but sits close to the line.
+
+**Outcome of stress-testing:** The definitions held. All generated boundary posts could be resolved using the existing decision rules without requiring new rules or definition revisions. The most useful finding was that "opinion framing over an evidence-based inference" (e.g., "tells me," "I think," "seems like") does not automatically make a post Opinion — the stripping test is the correct tool.
+
+---
+
+### 7.2 Annotation Assistance
+
+**Decision: No LLM pre-labeling. All 310 examples were manually annotated.**
+
+Every row in [data.csv](data/data.csv) was labeled by hand, without LLM pre-labeling or suggestions at annotation time.
+
+**Why manual-only annotation was chosen:**
+
+1. **Label quality over speed.** The label definitions were designed around subtle structural distinctions (evidence that stands alone vs. opinion framing, reporting vs. implication) that an LLM will conflate in predictable ways — particularly at the Analysis/Opinion boundary. Pre-labeling with an LLM and then reviewing for disagreements risks anchoring the annotator to the LLM's decision, which undermines the independence of the ground truth.
+
+2. **The dataset is small enough.** At 310 examples, manual annotation was achievable. LLM-assisted pre-labeling is a productivity tool for datasets in the thousands; using it here would introduce annotation bias without meaningful time savings.
+
+3. **Single-annotator ground truth requires extra discipline.** Without a second annotator to check against (inter-annotator agreement was not computed for this project), the labeled dataset is entirely a reflection of one person's application of the definitions. Introducing an LLM pre-labeling pass would make the ground truth a reflection of *the LLM's priors filtered through one person's review* — a weaker epistemic position than direct human annotation.
+
+**Limitation to acknowledge:** Single-annotator datasets carry consistency risk. The annotator's application of the Analysis/Opinion boundary may have drifted across 310 examples, particularly for the hardest edge cases. Without inter-annotator agreement metrics, there is no way to quantify this drift. This is a structural limitation of the dataset and should be disclosed in any deployment context.
+
+**Disclosure:** No AI tool was used at any point during the annotation process. All labels in data.csv were assigned by the project author directly.
+
+---
+
+### 7.3 Failure Analysis
+
+**Purpose:** After training, feed the model's 7 misclassifications to an LLM and ask it to identify systematic patterns before writing the evaluation narrative. The goal is to separate model-specific failure modes from annotation noise — and to surface patterns that are not obvious from looking at individual wrong predictions in isolation.
+
+**Process:**
+
+Each of the 7 wrong predictions (predicted label, true label, and post text) will be provided to Claude with the following prompt:
+
+> *"Here are 7 posts that a fine-tuned DistilBERT classifier got wrong, with the predicted and true labels. Given these label definitions [definitions pasted], identify any systematic patterns in the errors. What is the model actually learning that causes these specific confusions? Be specific — don't just list the examples back."*
+
+**What to look for in the LLM's response:**
+
+- Whether the errors cluster around a specific label boundary (expected: `Interpretive_Opinion` ↔ `Evidence_Based_Analysis`)
+- Whether the errors are driven by surface features (analytical-sounding vocabulary, present tense vs. reporting tense) rather than structural properties
+- Whether short posts are disproportionately misclassified — the model may rely on length as a proxy for evidence density
+- Whether the model conflates persuasive tone with Low Quality, or analytical vocabulary with Analysis
+
+**How to verify the patterns independently:**
+
+LLM-identified patterns will be checked against the confusion matrix and the full test set predictions before being reported as findings. Specifically:
+- If the LLM claims "the model confuses opinionated tone with Low Quality," count how many of the 7 errors actually involve that boundary vs. how many involve the Analysis/Opinion boundary
+- If the LLM claims "short posts are misclassified more often," check whether the misclassified posts are systematically shorter than correctly classified ones
+- Any pattern not verifiable from the available prediction data will not be reported as a finding
+
+**What the LLM analysis cannot tell us:** Whether the errors are the model's fault or the annotation's fault. A post that the model labels `Evidence_Based_Analysis` but the ground truth says `Interpretive_Opinion` might be a model error, or it might be an annotation inconsistency that a second human annotator would have labeled differently. The failure analysis will flag this ambiguity explicitly rather than treating all misclassifications as model failures.
+
+---
+
 ## Model Architecture Summary
 
 | Component | Choice | Rationale |
