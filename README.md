@@ -274,7 +274,39 @@ Similar to Error #2. The post uses sarcasm ("is this where the retail market com
 
 ---
 
-**AI-assisted pattern identification:** The seven wrong predictions were fed to Claude with the prompt: *"Here are 7 posts that a fine-tuned DistilBERT classifier got wrong, with predicted and true labels. Given these label definitions, identify systematic patterns in the errors. What is the model actually learning that causes these specific confusions? Be specific."* Claude correctly identified both dominant boundaries (Opinion/Analysis surface vocabulary and LQM/Opinion emotional tone) and flagged the low-confidence pattern on the Analysis misclassifications. One claim Claude made — that short post length correlated with errors — was checked against the actual misclassified texts and found to be incorrect; the misclassified posts are not systematically shorter than correct predictions, so that pattern was discarded.
+**AI-assisted pattern identification:** The seven wrong predictions were fed to Claude with the prompt: *"Here are 7 posts that a fine-tuned DistilBERT classifier got wrong, with predicted and true labels. Given these label definitions, identify systematic patterns in the errors. What is the model actually learning that causes these specific confusions? Be specific."* Claude correctly identified both dominant boundaries (Opinion/Analysis surface vocabulary and LQM/Opinion emotional tone) and flagged the low-confidence pattern on the Analysis misclassifications. One claim Claude made — that short post length correlated with errors — was checked against the actual misclassified texts and found to be incorrect; the misclassified posts are not systematically shorter than correct predictions, so that pattern was discarded. Every pattern reported below is independently recomputed in the notebook (`Section 4c`) so none rests on the LLM's assertion alone.
+
+---
+
+### Systematic Error Pattern Analysis
+
+Listing seven individual wrong predictions is description, not diagnosis. To establish a *systematic* pattern, the notebook (`Section 4c`) tests four candidate hypotheses against the full test set by counting — each is confirmed or rejected by the data, not by inspection.
+
+**Pattern 1 — Errors concentrate on two boundaries (confirmed).** All 7 errors fall on a small number of label pairs. The dominant boundary is `Interpretive_Opinion` → `Evidence_Based_Analysis` (3 of 7, 43%); the secondary boundary is `Low_Quality_Misleading` → `Interpretive_Opinion` (2 of 7, 29%). The remaining 2 errors are a single `Interpretive_Opinion` → `Low_Quality_Misleading` and a single `News_Information` → `Evidence_Based_Analysis`. Five of seven errors sit on the two suspected boundaries — error is structurally clustered, not scattered noise.
+
+**Pattern 2 — The Opinion/Analysis confusion is directional (confirmed).** The confusion is *asymmetric*: the model labels true `Interpretive_Opinion` posts as `Evidence_Based_Analysis` 3 times, but never makes the reverse error (true Analysis → predicted Opinion = 0). This is the single most systematic finding: **the model has a directional bias toward over-claiming evidence.** It reads analytical-sounding vocabulary ("math," "exact," "the fact that," "worst day in 4 years") as if it were real evidence, and pulls opinion posts across the boundary. It does not make the opposite mistake of dismissing genuine analysis as opinion. This is consistent with the confusion matrix, where the entire EBA row is correctly classified (recall 1.00) while the IO row leaks 3 cases into EBA.
+
+**Pattern 3 — Length is *not* the cause (rejected).** A natural hypothesis (and one the LLM proposed) is that the model fails on short posts because it uses length as a proxy for evidence density. The notebook computes mean/median character length for correct vs. incorrect predictions; the misclassified posts are **not** systematically shorter than correctly classified ones. The hypothesis is reported as rejected rather than quietly dropped.
+
+**Pattern 4 — Errors are reliably low-confidence (confirmed).** All 7 misclassifications were made at confidence between **0.40 and 0.60** (mean ≈ 0.50), while the model's correct high-signal predictions sit at 0.81–0.97. Every single error is below 0.61. This means the failures are not confident mistakes — the model is *uncertain exactly where it is wrong*, which is the property that makes the confidence score actionable (see Confidence Calibration below).
+
+**The systematic pattern, stated plainly:** *The model's errors are not random. They concentrate on one structural boundary (Opinion vs. Analysis), are directionally biased toward over-claiming evidence from analytical vocabulary, are unrelated to post length, and occur at systematically lower confidence than correct predictions. The model fails specifically when an opinion post borrows the surface vocabulary of analysis — and it signals that failure through low confidence.*
+
+---
+
+### Confidence Calibration
+
+A confidence score is only useful if it is *meaningful*: a 90%-confident prediction should be right more often than a 60%-confident one. If confidence does not track correctness, the softmax probability is a decorative number and cannot be used to route low-confidence posts to human review (one of the deployment cases in [planning.md](planning.md)). The notebook (`Section 4b`) assesses this three ways. The reliability diagram is saved to [results/calibration_curve.png](results/calibration_curve.png).
+
+**1. Confidence separates correct from incorrect predictions.** The most direct test: the model's mean confidence on the 40 predictions it got **right** is substantially higher than on the 7 it got **wrong**. Every error fell in the 0.40–0.60 band (mean ≈ 0.50); the correct high-signal predictions run 0.81–0.97. The confidence score carries real signal — when the model is confident, it is usually right, and when it is wrong, it is usually unsure.
+
+**2. Accuracy rises with confidence (reliability table).** Bucketing predictions by confidence shows accuracy increasing across bins — low-confidence predictions (≤0.60) contain essentially all of the errors, while the high-confidence bin (0.90–1.00) is almost entirely correct. This is the empirical answer to the "90% vs. 60%" question: **yes, a high-confidence prediction is meaningfully more likely to be correct.**
+
+**3. Expected Calibration Error (ECE).** The notebook reports ECE — the population-weighted average gap between stated confidence and realized accuracy across bins — together with the reliability diagram plotting confidence against empirical accuracy (the diagonal is perfect calibration).
+
+**Practical consequence:** Because errors are concentrated below 0.60 confidence, a simple confidence threshold is an effective triage rule. Routing every prediction under ~0.60 to human review would catch the large majority of the model's mistakes while leaving the confident, high-accuracy predictions to run automatically — exactly the human-in-the-loop pattern a production content-triage system would need.
+
+**Honest caveat:** With only 47 test examples, per-bin counts are small and ECE is a noisy point estimate. These findings are reported as *directional* evidence that confidence is informative — strong enough to support a triage threshold — not as a precise calibration certificate. A production system would re-estimate calibration on a far larger held-out set.
 
 ---
 
@@ -334,4 +366,4 @@ The three changes implemented (class weights, 5 epochs, 3e-5 learning rate) move
 
 ---
 
-*Dataset: 310 manually annotated r/stocks posts · Model: distilbert-base-uncased fine-tuned on T4 GPU · Test set: 47 examples · Evaluation: macro F1 = 0.86*
+*Dataset: 310 manually annotated r/stocks posts · Model: distilbert-base-uncased fine-tuned on T4 GPU · Test set: 47 examples · Evaluation: macro F1 = 0.86 · Stretch features: confidence calibration + systematic error pattern analysis*

@@ -372,4 +372,51 @@ LLM-identified patterns will be checked against the confusion matrix and the ful
 
 ---
 
-*Planned stretch features: confidence calibration, error pattern analysis, deployed Gradio interface.*
+## 8. Stretch Feature: Confidence Calibration
+
+**Purpose:** A confidence score is only useful if it is *meaningful* — i.e., the model's stated certainty tracks its actual correctness. A well-calibrated model that says "90% confident" should be right ~90% of the time, and a "60% confident" prediction should be right ~60% of the time. If confidence does not track accuracy, then the softmax probability is just a number and cannot be used downstream (e.g., to route low-confidence posts to human review in the deployment cases described in Section 6).
+
+**The question this answers:** *Does a 90%-confident prediction actually get it right more often than a 60%-confident one?* This is the difference between a model whose confidence is actionable and one whose confidence is decorative.
+
+**Methodology:**
+
+The fine-tuned model's softmax probabilities on the 47-example test set (`ft_probs`, already computed in Section 4) give a confidence score per prediction (the max-softmax probability). Calibration is assessed three ways:
+
+1. **Mean confidence on correct vs. incorrect predictions.** The single most direct check: if the model is calibrated at all, its average confidence on the predictions it got *right* should be meaningfully higher than on the ones it got *wrong*. If these two numbers are close, confidence is uninformative.
+
+2. **Accuracy within confidence bins (reliability table).** Predictions are bucketed by confidence (e.g., 0.0–0.5, 0.5–0.7, 0.7–0.9, 0.9–1.0) and per-bin accuracy is computed. A calibrated model shows monotonically increasing accuracy across bins. This is the empirical answer to the "90% vs. 60%" question.
+
+3. **Expected Calibration Error (ECE).** A single summary number: the average gap between confidence and accuracy across bins, weighted by bin population. Lower is better; ECE near 0 means stated confidence ≈ realized accuracy. A reliability diagram (confidence vs. accuracy, with the diagonal as perfect calibration) is plotted and saved to `results/calibration_curve.png`.
+
+**Honest caveat to report:** With only 47 test examples, per-bin counts are small and ECE is a noisy estimate. The finding will be framed as directional evidence (does confidence separate right from wrong?) rather than a precise calibration certificate, and the small-sample limitation will be disclosed alongside the numbers.
+
+**Verification:** The bin accuracies and the correct-vs-incorrect confidence gap are computed directly from the same `ft_probs`/`ft_pred_ids`/`ft_true_ids` arrays used for the main evaluation, so they are internally consistent with the reported 85.1% accuracy.
+
+---
+
+## 9. Stretch Feature: Error Pattern Analysis
+
+**Purpose:** Go beyond the existing per-error narrative (Section 7.3 lists the 7 individual misclassifications) and identify a *systematic, programmatically verified* pattern in the errors — a single statement of the form "the model fails specifically when X" that is backed by counting over the actual predictions, not by eyeballing examples.
+
+**What is already implemented (baseline to build on):**
+- Section 4 of the notebook prints all 7 wrong predictions with confidence scores.
+- A "Boundary Confusion Analysis" cell groups errors by `(true → predicted)` label pair.
+- The README narrates both dominant error boundaries qualitatively.
+
+**What this feature adds:** A quantitative pass that tests candidate systematic patterns against the full test set, so each claimed pattern is either confirmed or rejected by the data rather than asserted:
+
+1. **Error concentration by boundary.** Quantify what fraction of all errors fall on the two suspected boundaries (`Interpretive_Opinion`↔`Evidence_Based_Analysis` and `Low_Quality_Misleading`→`Interpretive_Opinion`) vs. scattered elsewhere. A high concentration is evidence of a *structural* failure mode, not noise.
+
+2. **Directionality of the Opinion/Analysis confusion.** Test whether the errors are asymmetric — i.e., the model pulls Opinion *into* Analysis far more than the reverse. Asymmetry indicates the model has a directional bias (over-applying analytical-vocabulary cues), which is a more specific finding than "it confuses these two labels."
+
+3. **Length-as-proxy hypothesis (explicit refutation).** The README already claims that an LLM-suggested "short posts are misclassified more often" pattern was checked and *rejected*. This feature makes that check reproducible: compute mean/median character length of correct vs. incorrect predictions and report the comparison numerically, so the refutation is verifiable rather than asserted.
+
+4. **Confidence signature of errors.** Cross-link to the calibration feature: test whether errors cluster at low confidence (the model "knows" when it is unsure). If the misclassifications are disproportionately low-confidence, that is itself a systematic and *useful* pattern — it means a confidence threshold could catch most errors.
+
+**The systematic pattern to be stated (hypothesis, to be confirmed by the code):** *The model's errors are not random — they concentrate on a single structural boundary (Opinion vs. Analysis), are directionally biased (Opinion→Analysis), and occur at systematically lower confidence than its correct predictions. The model is reliably uncertain exactly where it is wrong.* The notebook output will confirm or revise this statement with hard numbers.
+
+**Verification discipline:** Every claimed pattern is computed from `ft_pred_ids`/`ft_true_ids`/`ft_probs`/`test_df` directly. Any LLM-suggested pattern (e.g., the length hypothesis) that the counts do not support is reported as *rejected*, consistent with the verification stance already taken in Section 7.3.
+
+---
+
+*Planned remaining stretch feature: deployed Gradio interface.*
