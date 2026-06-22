@@ -380,6 +380,22 @@ LLM-identified patterns will be checked against the confusion matrix and the ful
 
 ---
 
+## Why Confidence Is Capped at ~0.6-0.7
+
+The model rarely exceeds 0.70 confidence on any prediction. This is not a sign of poor training. It is the combined result of four structural factors that interact and reinforce each other.
+
+**1. Small training set.** The model was trained on 217 examples across four classes, roughly 50 per label. At this data scale, the model cannot build strong enough feature associations to produce sharp, peaked softmax distributions. Probability mass stays spread across classes rather than concentrating near 1.0. More labeled examples are the single largest lever available to raise the confidence ceiling.
+
+**2. Inherently ambiguous label boundaries.** The four categories overlap in real Reddit text in ways that are genuine, not labeling errors. A post can simultaneously read as news and opinion, or opinion and low quality. The model's hedged confidence is often a correct representation of how much the input actually disambiguates the label. The 0.50-0.70 confidence bin has 92% empirical accuracy on the test set, meaning the model is reliably correct even at those seemingly low scores.
+
+**3. Input truncated at half the model's supported length.** DistilBERT supports up to 512 tokens, but inference truncates at 256 (`MAX_LENGTH = 256` in app.py). For longer posts, the second half of the content is discarded. That second half often contains the label disambiguating content (a conclusion, a specific data cite, a call to financial action) that would have pushed the model toward a more confident prediction.
+
+**4. Class weighting flattens output distributions.** The weighted `CrossEntropyLoss` used during training (with `Evidence_Based_Analysis` penalized at 1.27x) discourages the model from committing strongly to any one class. This is intentional for improving minority-class recall, but it has the side effect of softening all output distributions across the board. The model learns to hedge rather than commit, which is why even clearly correct predictions rarely exceed 0.70.
+
+**What this means in practice.** The model is poorly calibrated in the traditional sense (ECE = 0.287), but its confidence is still informative as a relative signal: predictions below 0.60 are more likely to be wrong, and 5 of the 7 test errors fall in that range. The 0.60 triage threshold in the deployed interface is set where it is because that is where the model's useful signal is. A well-calibrated model trained on more data would produce the same triage behavior at higher absolute confidence values.
+
+---
+
 ## 10. Stretch Feature: Confidence Calibration
 
 **Purpose:** A confidence score is only useful if it is *meaningful*, i.e., the model's stated certainty tracks its actual correctness. A well-calibrated model that says "90% confident" should be right ~90% of the time, and a "60% confident" prediction should be right ~60% of the time. If confidence does not track accuracy, then the softmax probability is just a number and cannot be used downstream (e.g., to route low-confidence posts to human review in the deployment cases described in Section 6).

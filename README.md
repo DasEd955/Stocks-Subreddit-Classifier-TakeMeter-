@@ -372,6 +372,22 @@ This is not a failure of the fine-tuning approach; it is an honest limitation of
 
 ---
 
+## Why Confidence Is Capped at ~0.6-0.7
+
+The model rarely exceeds 0.70 confidence on any prediction. This is not a bug or a sign of poor training. It is the combined result of four structural factors:
+
+**1. Small training set.** The model was trained on 217 examples across four classes, roughly 50 per label. At this data scale, the model cannot build strong enough feature associations to produce sharp, peaked softmax distributions. The probability mass stays spread across classes rather than concentrating near 1.0. More labeled examples would directly raise the confidence ceiling, and is the single largest lever available.
+
+**2. Inherently ambiguous labels.** The four categories overlap in real Reddit text in ways that are genuine, not labeling errors. A post can simultaneously read as news and opinion, or opinion and low quality. The model's hedged confidence is often a correct representation of how much the input text actually disambiguates the label. The 0.50-0.70 confidence bin has 92% empirical accuracy on the test set, meaning the model is reliably correct at those confidence levels even if the scores feel low.
+
+**3. Input truncation at half the model's supported length.** DistilBERT supports up to 512 tokens, but inference in [app.py](app.py) truncates at 256 (`MAX_LENGTH = 256`, [app.py:45](app.py#L45)). For longer posts, the second half of the content is discarded. That second half often contains the label disambiguating evidence (a conclusion, a data cite, a call to action) that would have pushed the model toward a more confident prediction.
+
+**4. Class weighting flattens probability distributions.** The weighted `CrossEntropyLoss` used during training (with `Evidence_Based_Analysis` penalized 1.27x) discourages the model from committing strongly to any one class. This is intentional for improving minority class recall, but it has the side effect of softening all output distributions across the board. The model learns to hedge rather than commit, which is why even clearly correct predictions rarely exceed 0.70.
+
+**What this means in practice.** The model is poorly calibrated in the traditional sense (ECE = 0.287), but its confidence is still informative as a *relative* signal: predictions below 0.60 are more likely to be wrong, and 5 of the 7 test errors fall in that range. The 0.60 triage threshold in [app.py](app.py) is set where it is because that is where the model's useful signal is, not because 0.60 is an aspirational target. A well-calibrated model trained on more data would produce the same triage behavior at higher absolute confidence values.
+
+---
+
 ## Deployed Interface
 
 A single-file [Gradio](https://www.gradio.app/) app ([app.py](app.py)) loads the fine-tuned model and lets you classify a brand new post interactively: paste a Reddit r/stocks post, press **Classify**, and the app returns the predicted discourse quality label, the model's confidence, the full probability distribution across all four classes, and a triage hint.
